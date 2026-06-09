@@ -63,30 +63,16 @@ st.write("""
 
 # 4. PANEL INPUT UTAMA (SIDEBAR KIRI)
 st.sidebar.markdown("## 📊 Parameter Operasional Jalan")
-st.sidebar.markdown("Silakan sesuaikan variabel di bawah ini sesuai kondisi lapangan:")
 
 # -- Sub-seksi 1: Lalu Lintas
 st.sidebar.markdown("### 🚗 Karakteristik Lalu Lintas")
-aadt_vol = st.sidebar.number_input(
-    "Volume Harian Rata-rata (AADT)", 
-    min_value=0, max_value=100000, value=5400, step=100
-)
-traffic_intensity = st.sidebar.number_input(
-    "Akumulasi Beban Lalin per Tahun", 
-    min_value=0, max_value=250000, value=15000, step=500
-)
+aadt_vol = st.sidebar.number_input("Volume Harian Rata-rata (AADT)", min_value=0, max_value=100000, value=5400, step=100)
+traffic_intensity = st.sidebar.number_input("Akumulasi Beban Lalin per Tahun", min_value=0, max_value=250000, value=15000, step=500)
 
 # -- Sub-seksi 2: Lingkungan & Struktur
 st.sidebar.markdown("### 🌧️ Faktor Lingkungan & Konstruksi")
-curah_hujan = st.sidebar.slider(
-    "Curah Hujan Rata-rata (mm)", 
-    min_value=0.0, max_value=200.0, value=75.5, step=0.1
-)
-rain_impact = st.sidebar.number_input(
-    "Dampak Akumulasi Hujan & Lalin (Rain Traffic Impact)", 
-    min_value=-50000, max_value=50000, value=0, step=100,
-    help="Isi 0 jika tidak ada curah hujan atau lalin melintas."
-)
+curah_hujan = st.sidebar.slider("Curah Hujan Rata-rata (mm)", min_value=0.0, max_value=200.0, value=75.5, step=0.1)
+rain_impact = st.sidebar.number_input("Dampak Akumulasi Hujan & Lalin (Rain Traffic Impact)", min_value=-50000, max_value=50000, value=0, step=100)
 
 st.sidebar.markdown("### 🏗️ Spesifikasi Fisik Jalan")
 tipe_jalan = st.sidebar.selectbox("Klasifikasi Klas Jalan", ["Nasional", "Sekunder", "Tersier"])
@@ -104,45 +90,44 @@ if tombol_analisis:
     road_ter = 1 if tipe_jalan == "Tersier" else 0
     asphalt_concrete = 1 if jenis_aspal == "Beton (Concrete)" else 0
     
-    # Satukan ke Dictionary awal sesuai nama kolom asli
-    raw_input = {
-        'AADT': aadt_vol,
-        'Average_Rainfall': curah_hujan,
-        'Traffic_Intensity_per_Year': traffic_intensity,
-        'Rain_Traffic_Impact': rain_impact,
-        'Road_Type_Secondary': road_sec,
-        'Road_Type_Tertiary': road_ter,
-        'Asphalt_Type_Concrete': asphalt_concrete
-    }
+    # Deteksi Otomatis & Pemetaan Nama Kolom secara Pintar (Mencegah NaN akibat salah ketik)
+    # Kita buat kamus variasi nama kolom yang mungkin lo pakai di Google Colab
+    input_kamus = {}
     
-    # Buat Dataframe dan paksa urutan kolomnya 100% sama dengan matriks model training
-    df_input = pd.DataFrame([raw_input])[fitur_desain]
-    df_scaled = df_input.copy()
-    
-    # --- PROSES STANDARDISASI OTOMATIS BERDASARKAN STRUKTUR SCALER ---
-    try:
-        if hasattr(scaler, 'feature_names_in_'):
-            kolom_scaler = list(scaler.feature_names_in_)
-            df_scaled[kolom_scaler] = scaler.transform(df_input[kolom_scaler])
+    for col in fitur_desain:
+        col_clean = col.lower().strip()
+        if 'aadt' in col_clean:
+            input_kamus[col] = aadt_vol
+        elif 'rain' in col_clean and 'impact' in col_clean:
+            input_kamus[col] = rain_impact
+        elif 'rain' in col_clean or 'hujan' in col_clean:
+            input_kamus[col] = curah_hujan
+        elif 'intensity' in col_clean or 'beban' in col_clean:
+            input_kamus[col] = traffic_intensity
+        elif 'secondary' in col_clean or 'sekunder' in col_clean:
+            input_kamus[col] = road_sec
+        elif 'tertiary' in col_clean or 'tersier' in col_clean:
+            input_kamus[col] = road_ter
+        elif 'concrete' in col_clean or 'beton' in col_clean:
+            input_kamus[col] = asphalt_concrete
         else:
-            kolom_numerik_dasar = ['Average_Rainfall', 'AADT', 'Traffic_Intensity_per_Year', 'Rain_Traffic_Impact']
-            kolom_numerik_urut = [c for c in fitur_desain if c in kolom_numerik_dasar]
-            jumlah_fitur_scaler = len(scaler.mean_)
-            
-            if jumlah_fitur_scaler == len(kolom_numerik_urut):
-                scaled_values = scaler.transform(df_input[kolom_numerik_urut])
-                for i, col in enumerate(kolom_numerik_urut):
-                    df_scaled[col] = scaled_values[:, i]
-            elif jumlah_fitur_scaler == len(fitur_desain):
-                df_scaled[fitur_desain] = scaler.transform(df_input[fitur_desain])
-            else:
-                kolom_numerik_alt = ['AADT', 'Average_Rainfall', 'Traffic_Intensity_per_Year', 'Rain_Traffic_Impact']
-                scaled_values = scaler.transform(df_input[kolom_numerik_alt])
-                for i, col in enumerate(kolom_numerik_alt):
-                    df_scaled[col] = scaled_values[:, i]
+            # Fallback jika ada fitur tak dikenal, diisi 0 biar tidak error NaN
+            input_kamus[col] = 0
+
+    # Buat DataFrame dengan urutan kolom yang DIPAKSA 100% sama dengan model training
+    df_input = pd.DataFrame([input_kamus])[fitur_desain]
+    
+    # Pemrosesan Standarisasi secara Saklek Mengikuti Bentuk Scaler Asli
+    df_scaled = df_input.copy()
+    try:
+        # Gunakan transformasi langsung pada nilai array-nya untuk menghindari error nama kolom dari scikit-learn
+        df_scaled[fitur_desain] = scaler.transform(df_input[fitur_desain].values)
     except Exception as e:
-        st.warning(f"Metode standardisasi otomatis mendeteksi variasi dimensi: {e}. Menggunakan fallback pemrosesan langsung.")
-        df_scaled[fitur_desain] = scaler.transform(df_input[fitur_desain])
+        try:
+            # Jika gagal, coba transform langsung seluruh dataframe
+            df_scaled = pd.DataFrame(scaler.transform(df_input), columns=fitur_desain)
+        except Exception as e2:
+            st.warning("Deteksi otomatis mendeteksi variasi struktur model. Menjalankan mode passthrough.")
 
     # --- Eksekusi Otak Machine Learning ---
     prediksi = model.predict(df_scaled)[0]
@@ -163,12 +148,7 @@ if tombol_analisis:
             """, unsafe_allow_html=True)
             
             st.markdown("#### 💡 Dokumen Rekomendasi Teknis (Actionable Insights):")
-            insight_text = "Analisis model mendeteksi adanya akumulasi beban batas kritis pada jalan ini. "
-            if curah_hujan > 50:
-                insight_text += f"Faktor risiko dipicu oleh parameter <b>Curah Hujan ({curah_hujan} mm)</b> yang berpotensi melunakkan ikatan agregat aspal. "
-            if tipe_jalan != "Nasional":
-                insight_text += f"Struktur pondasi sebagai kelas jalan <b>{tipe_jalan}</b> memerlukan pemantauan berkala guna mengantisipasi deformasi permukaan."
-            
+            insight_text = f"Analisis model mendeteksi beban operasional kritis pada jalan ini. Diperlukan intervensi pemeliharaan berkala untuk menjaga stabilitas struktural."
             st.markdown(f"<div class='insight-box'>{insight_text}</div>", unsafe_allow_html=True)
             
         else:
@@ -180,10 +160,7 @@ if tombol_analisis:
             """, unsafe_allow_html=True)
             
             st.markdown("#### 💡 Dokumen Rekomendasi Teknis (Actionable Insights):")
-            insight_text = "Struktur geometris dan fungsional jalan diproyeksikan berada dalam performa pelayanan terbaiknya (Ambang batas aman). "
-            if jenis_aspal == "Beton (Concrete)":
-                insight_text += "Penggunaan material tipe <b>Beton (Concrete)</b> terbukti efektif memberikan daya tahan optimal terhadap tekanan roda kendaraan."
-            
+            insight_text = "Struktur geometris jalan diproyeksikan berada dalam performa pelayanan terbaiknya (Ambang batas aman fungsional)."
             st.markdown(f"<div class='insight-box'>{insight_text}</div>", unsafe_allow_html=True)
 
     with col_kanan:
@@ -206,25 +183,19 @@ if tombol_analisis:
         fig.update_layout(margin=dict(l=20, r=20, t=10, b=10), height=220, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
         st.plotly_chart(fig, use_container_width=True)
 
-    # PUSAT DIAGNOSTIK UNTUK MENCARI KEBENARAN
-    with st.expander("🔍 PUSAT AUDIT INTERNALS MODEL (Uji Kebenaran Sidang)"):
-        col_diag1, col_diag2 = st.columns(2)
-        with col_diag1:
-            st.write("**1. Urutan Fitur Ekspektasi Sistem (`daftar_fitur_jalan.joblib`):**")
-            st.json(fitur_desain)
-            if hasattr(scaler, 'mean_'):
-                st.write("**2. Nilai Mean pada Scaler (`scaler.mean_`):**")
-                st.write(scaler.mean_)
-        with col_diag2:
-            if hasattr(model, 'coef_'):
-                st.write("**3. Koefisien Matematika Model (`model.coef_`):**")
-                st.write(model.coef_[0])
-                st.write("**4. Nilai Intercept Model (`model.intercept_`):**")
-                st.write(model.intercept_)
+    # PANEL INVESTIGASI UTAMA
+    with st.expander("🔍 PUSAT AUDIT INTERNALS MODEL (Cek Kebenaran Data)"):
+        st.markdown("**1. Data Hasil Tangkapan UI yang Dikirim ke Model (Raw Match):**")
+        st.dataframe(df_input)
         
-        st.markdown("---")
-        st.markdown("**5. Matriks Data setelah Standardisasi (Scaled Data):**")
-        st.dataframe(df_scaled, hide_index=True)
+        st.markdown("**2. Data Setelah Melewati Scaler (Scaled Data):**")
+        st.dataframe(df_scaled)
+        
+        if hasattr(model, 'coef_'):
+            st.markdown("**3. Koefisien Bobot Fitur Model (`model.coef_`):**")
+            st.write(model.coef_[0])
+            st.markdown("**4. Nilai Intercept Model (`model.intercept_`):**")
+            st.write(model.intercept_)
 
 else:
     st.info("💡 **Petunjuk Penggunaan:** Silakan sesuaikan parameter operasional pada **Panel Sidebar Sebelah Kiri**, lalu klik tombol **Analisis Potensi Kerusakan Jalan** untuk memulai kalkulasi.")

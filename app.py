@@ -143,7 +143,7 @@ if tombol_analisis:
     with col_kanan:
         st.subheader("Metrik Keyakinan")
         
-        # Grafik Gauge dengan skema warna monokrom (Abu-abu ke Hitam)
+       # Grafik Gauge dengan skema warna monokrom (Abu-abu ke Hitam)
         warna_bar = "#111827" if prediksi == 1 else "#6b7280"
         
         fig = go.Figure(go.Indicator(
@@ -151,7 +151,7 @@ if tombol_analisis:
             value = skor_yakin,
             number = {'suffix': "%", 'font': {'size': 32, 'color': '#111827'}},
             gauge = {
-                'axis': {'range': [0, 100], 'ticktick': 20, 'tickcolor': '#6b7280'},
+                'axis': {'range': [0, 100], 'dtick': 20, 'tickcolor': '#6b7280'}, # Selesai diperbaiki: 'ticktick' diganti ke 'dtick'
                 'bar': {'color': warna_bar},
                 'bgcolor': "#f3f4f6",
                 'borderwidth': 1,

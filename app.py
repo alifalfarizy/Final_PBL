@@ -10,14 +10,13 @@ st.set_page_config(
     layout="wide"
 )
 
-# Custom CSS: Tema Monokrom (Hitam, Putih, Abu-abu)
+# Custom CSS: Tema Monokrom dengan Aksen Merah Khusus untuk Status Rusak
 st.markdown("""
     <style>
-    /* Mengubah font global ke Sans-Serif */
     html, body, [data-testid="stSidebar"] {
         font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
     }
-    /* Desain Kotak Hasil */
+    /* Kotak Hasil */
     .card-status {
         padding: 20px;
         border-radius: 4px;
@@ -29,10 +28,12 @@ st.markdown("""
         color: #111827;
         border-left: 6px solid #4b5563;
     }
+    /* Berubah menjadi Merah Gelap saat Rusak agar Kontras dan Formal */
     .status-rusak {
-        background-color: #f3f4f6;
-        color: #111827;
-        border-left: 6px solid #111827;
+        background-color: #fdf2f2;
+        color: #9b1c1c;
+        border-left: 6px solid #e02424;
+        border-color: #f8b4b4;
     }
     .title-status {
         margin: 0;
@@ -43,9 +44,14 @@ st.markdown("""
     .text-status {
         margin: 5px 0 0 0;
         font-size: 14px;
+    }
+    .status-aman .text-status {
         color: #374151;
     }
-    /* Merapikan visual tombol */
+    .status-rusak .text-status {
+        color: #7f1d1d;
+    }
+    /* Tombol Analisis */
     div.stButton > button:first-child {
         background-color: #111827 !important;
         color: #ffffff !important;
@@ -54,6 +60,10 @@ st.markdown("""
     }
     div.stButton > button:first-child:hover {
         background-color: #374151 !important;
+    }
+    /* Memperjelas Teks Deskripsi Parameter di Sidebar agar Lebih Terbaca */
+    .stMarkdown p {
+        font-size: 13px !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -80,11 +90,17 @@ st.sidebar.header("Parameter Operasional")
 
 st.sidebar.subheader("Volume Lalu Lintas")
 aadt_vol = st.sidebar.number_input("Volume Harian Rata-rata (AADT)", min_value=0, max_value=100000, value=5400)
+st.sidebar.markdown("<small style='color: #9ca3af; display: block; margin-top: -10px; margin-bottom: 10px;'><b>Satuan: Kendaraan/Hari</b><br>AADT (Annual Average Daily Traffic) adalah total volume lalu lintas kendaraan yang melewati satu titik jalan dalam satu tahun dibagi 365 hari.</small>", unsafe_allow_html=True)
+
 traffic_intensity = st.sidebar.number_input("Akumulasi Beban per Tahun", min_value=0, max_value=250000, value=15000)
+st.sidebar.markdown("<small style='color: #9ca3af; display: block; margin-top: -10px; margin-bottom: 10px;'><b>Satuan: Ton/Tahun</b><br>Total proyeksi berat muatan kendaraan (tonase) kumulatif yang melintasi struktur perkerasan jalan dalam periode satu tahun.</small>", unsafe_allow_html=True)
 
 st.sidebar.subheader("Kondisi Lingkungan")
 curah_hujan = st.sidebar.slider("Curah Hujan Rata-rata (mm)", min_value=0.0, max_value=200.0, value=75.5)
+st.sidebar.markdown("<small style='color: #9ca3af; display: block; margin-top: -10px; margin-bottom: 10px;'><b>Satuan: mm (Milimeter)</b><br>Ketinggian air hujan yang terkumpul di permukaan datar dalam durasi pengamatan tertentu.</small>", unsafe_allow_html=True)
+
 rain_impact = st.sidebar.number_input("Dampak Akumulasi Hujan", min_value=-50000, max_value=50000, value=0)
+st.sidebar.markdown("<small style='color: #9ca3af; display: block; margin-top: -10px; margin-bottom: 15px;'><b>Satuan: Indeks Skalar (Angka)</b><br>Variabel interaksi matematika (Rain × Traffic) untuk mengukur tingkat kerawanan struktur jalan ketika dilewati muatan berat saat kondisi jenuh air.</small>", unsafe_allow_html=True)
 
 st.sidebar.subheader("Spesifikasi Struktur")
 tipe_jalan = st.sidebar.selectbox("Klasifikasi Kelas Jalan", ["Nasional", "Sekunder", "Tersier"])
@@ -99,7 +115,6 @@ if tombol_analisis:
     road_ter = 1 if tipe_jalan == "Tersier" else 0
     asphalt_concrete = 1 if jenis_aspal == "Beton (Concrete)" else 0
     
-    # Mapping nama kolom sesuai training
     input_kamus = {}
     for col in fitur_desain:
         c = col.lower().strip()
@@ -112,15 +127,12 @@ if tombol_analisis:
         elif 'concrete' in c or 'beton' in c: input_kamus[col] = asphalt_concrete
         else: input_kamus[col] = 0
 
-    # DataFrame Input
     df_input = pd.DataFrame([input_kamus])[fitur_desain]
     
-    # Prediksi Model
     prediksi = model.predict(df_input.values)[0]
     probabilitas = model.predict_proba(df_input.values)[0]
     skor_yakin = np.max(probabilitas) * 100
     
-    # Layout Output
     col_kiri, col_kanan = st.columns([6, 4])
     
     with col_kiri:
@@ -143,19 +155,19 @@ if tombol_analisis:
     with col_kanan:
         st.subheader("Metrik Keyakinan")
         
-       # Grafik Gauge dengan skema warna monokrom (Abu-abu ke Hitam)
-        warna_bar = "#111827" if prediksi == 1 else "#6b7280"
+        # Penyesuaian Warna Gauge (Merah jika Rusak, Abu-abu jika Aman)
+        warna_bar = "#e02424" if prediksi == 1 else "#4b5563"
         
         fig = go.Figure(go.Indicator(
             mode = "gauge+number",
             value = skor_yakin,
-            number = {'suffix': "%", 'font': {'size': 32, 'color': '#111827'}},
+            number = {'suffix': "%", 'font': {'size': 32, 'color': '#ffffff'}}, # Memperbaiki teks persentase menjadi PUTIH agar kontras dengan dark theme
             gauge = {
-                'axis': {'range': [0, 100], 'dtick': 20, 'tickcolor': '#6b7280'}, # Selesai diperbaiki: 'ticktick' diganti ke 'dtick'
+                'axis': {'range': [0, 100], 'dtick': 20, 'tickcolor': '#9ca3af'},
                 'bar': {'color': warna_bar},
-                'bgcolor': "#f3f4f6",
+                'bgcolor': "#1f2937", # Latar gauge abu-abu gelap agar selaras dengan dark theme Streamlit
                 'borderwidth': 1,
-                'bordercolor': "#d1d5db"
+                'bordercolor': "#4b5563"
             }
         ))
         fig.update_layout(margin=dict(l=20, r=20, t=10, b=10), height=180, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')

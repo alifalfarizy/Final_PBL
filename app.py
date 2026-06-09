@@ -122,34 +122,26 @@ if tombol_analisis:
     # --- PROSES STANDARDISASI OTOMATIS BERDASARKAN STRUKTUR SCALER ---
     try:
         if hasattr(scaler, 'feature_names_in_'):
-            # Jika scaler menyimpan nama kolom asli, ikuti nama kolomnya langsung
             kolom_scaler = list(scaler.feature_names_in_)
             df_scaled[kolom_scaler] = scaler.transform(df_input[kolom_scaler])
         else:
-            # JIKA FITUR DI-FIT MENGGUNAKAN ARRAY: Lakukan pencocokan sekuensial pintar
             kolom_numerik_dasar = ['Average_Rainfall', 'AADT', 'Traffic_Intensity_per_Year', 'Rain_Traffic_Impact']
-            # Urutkan list fitur numerik sesuai urutan relatif mereka di daftar_fitur_jalan
             kolom_numerik_urut = [c for c in fitur_desain if c in kolom_numerik_dasar]
-            
             jumlah_fitur_scaler = len(scaler.mean_)
             
             if jumlah_fitur_scaler == len(kolom_numerik_urut):
-                # Skenario A: Scaler lo hanya membaca 4 variabel numerik utama
                 scaled_values = scaler.transform(df_input[kolom_numerik_urut])
                 for i, col in enumerate(kolom_numerik_urut):
                     df_scaled[col] = scaled_values[:, i]
             elif jumlah_fitur_scaler == len(fitur_desain):
-                # Skenario B: Scaler lo membaca seluruh 7 variabel sekaligus (termasuk dummy)
                 df_scaled[fitur_desain] = scaler.transform(df_input[fitur_desain])
             else:
-                # Skenario C: Skenario alternatif berbasis urutan alfabetis numerik jika di atas meleset
                 kolom_numerik_alt = ['AADT', 'Average_Rainfall', 'Traffic_Intensity_per_Year', 'Rain_Traffic_Impact']
                 scaled_values = scaler.transform(df_input[kolom_numerik_alt])
                 for i, col in enumerate(kolom_numerik_alt):
                     df_scaled[col] = scaled_values[:, i]
     except Exception as e:
         st.warning(f"Metode standardisasi otomatis mendeteksi variasi dimensi: {e}. Menggunakan fallback pemrosesan langsung.")
-        # Fallback terakhir jika terjadi anomali tipe data
         df_scaled[fitur_desain] = scaler.transform(df_input[fitur_desain])
 
     # --- Eksekusi Otak Machine Learning ---
@@ -214,11 +206,24 @@ if tombol_analisis:
         fig.update_layout(margin=dict(l=20, r=20, t=10, b=10), height=220, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
         st.plotly_chart(fig, use_container_width=True)
 
-    # MENU INSPEKSI UNTUK SIDANG (Sangat disukai dosen penguji untuk pembuktian data)
-    with st.expander("🔍 Pusat Kendali & Audit Matriks Data (Keperluan Sidang)"):
-        st.markdown("**1. Data Mentah Hasil Input Masuk (Raw Data):**")
-        st.dataframe(df_input, hide_index=True)
-        st.markdown("**2. Hasil Transformasi Skala Standar (Scaled Data Pasca-Scaler):**")
+    # PUSAT DIAGNOSTIK UNTUK MENCARI KEBENARAN
+    with st.expander("🔍 PUSAT AUDIT INTERNALS MODEL (Uji Kebenaran Sidang)"):
+        col_diag1, col_diag2 = st.columns(2)
+        with col_diag1:
+            st.write("**1. Urutan Fitur Ekspektasi Sistem (`daftar_fitur_jalan.joblib`):**")
+            st.json(fitur_desain)
+            if hasattr(scaler, 'mean_'):
+                st.write("**2. Nilai Mean pada Scaler (`scaler.mean_`):**")
+                st.write(scaler.mean_)
+        with col_diag2:
+            if hasattr(model, 'coef_'):
+                st.write("**3. Koefisien Matematika Model (`model.coef_`):**")
+                st.write(model.coef_[0])
+                st.write("**4. Nilai Intercept Model (`model.intercept_`):**")
+                st.write(model.intercept_)
+        
+        st.markdown("---")
+        st.markdown("**5. Matriks Data setelah Standardisasi (Scaled Data):**")
         st.dataframe(df_scaled, hide_index=True)
 
 else:

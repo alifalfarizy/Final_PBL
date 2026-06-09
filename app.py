@@ -90,10 +90,8 @@ if tombol_analisis:
     road_ter = 1 if tipe_jalan == "Tersier" else 0
     asphalt_concrete = 1 if jenis_aspal == "Beton (Concrete)" else 0
     
-    # Deteksi Otomatis & Pemetaan Nama Kolom secara Pintar (Mencegah NaN akibat salah ketik)
-    # Kita buat kamus variasi nama kolom yang mungkin lo pakai di Google Colab
+    # Pemetakan otomatis agar nama kolom sinkron dengan isi joblib lo
     input_kamus = {}
-    
     for col in fitur_desain:
         col_clean = col.lower().strip()
         if 'aadt' in col_clean:
@@ -111,30 +109,59 @@ if tombol_analisis:
         elif 'concrete' in col_clean or 'beton' in col_clean:
             input_kamus[col] = asphalt_concrete
         else:
-            # Fallback jika ada fitur tak dikenal, diisi 0 biar tidak error NaN
             input_kamus[col] = 0
 
-    # Buat DataFrame dengan urutan kolom yang DIPAKSA 100% sama dengan model training
+    # Buat DataFrame awal dengan urutan kolom saklek
     df_input = pd.DataFrame([input_kamus])[fitur_desain]
-    
-    # Pemrosesan Standarisasi secara Saklek Mengikuti Bentuk Scaler Asli
     df_scaled = df_input.copy()
+    
+    # --- JALUR PINTAR PERBAIKAN SCALER (ANTI OVERFLOW) ---
+    status_scaler = "Mulai Analisis..."
     try:
-        # Gunakan transformasi langsung pada nilai array-nya untuk menghindari error nama kolom dari scikit-learn
-        df_scaled[fitur_desain] = scaler.transform(df_input[fitur_desain].values)
+        # Cek apakah scaler lo menggunakan penamaan kolom otomatis (Scikit-Learn modern)
+        if hasattr(scaler, 'feature_names_in_'):
+            kolom_scaler = list(scaler.feature_names_in_)
+            df_scaled[kolom_scaler] = scaler.transform(df_input[kolom_scaler])
+            status_scaler = "Penyelarasan Sempurna (Berbasis Nama Kolom)."
+        else:
+            # Cek panjang array rata-rata di dalam scaler asli lo
+            jumlah_fitur_scaler = len(scaler.mean_)
+            
+            if jumlah_fitur_scaler == 4:
+                # Fiks, scaler lo di Colab dulu cuma memproses 4 kolom numerik dasar ini!
+                kolom_numerik = ['Average_Rainfall', 'AADT', 'Traffic_Intensity_per_Year', 'Rain_Traffic_Impact']
+                # Urutkan posisinya agar presisi sesuai template joblib lo
+                kolom_numerik_urut = [c for c in fitur_desain if c in kolom_numerik]
+                
+                if len(kolom_numerik_urut) == 4:
+                    df_scaled[kolom_numerik_urut] = scaler.transform(df_input[kolom_numerik_urut])
+                    status_scaler = "Berhasil: Hanya 4 Fitur Numerik Dasar yang di-Scale (Dummy Diabaikan)."
+                else:
+                    # Alternatif jika ada typo nama kolom, ambil 4 kolom pertama yang bukan dummy
+                    kolom_alt = [c for c in fitur_desain if not any(x in c.lower() for x in ['road', 'asphalt', 'type', 'concrete', 'secondary', 'tertiary'])]
+                    df_scaled[kolom_alt] = scaler.transform(df_input[kolom_alt])
+                    status_scaler = "Berhasil dengan Fallback Pemetaan 4 Fitur Utama."
+            elif jumlah_fitur_scaler == len(fitur_desain):
+                df_scaled[fitur_desain] = scaler.transform(df_input[fitur_desain])
+                status_scaler = "Berhasil: Seluruh 7 Fitur di-Scale Sekaligus."
+            else:
+                # Skenario paksa array urutan depan
+                scaled_values = scaler.transform(df_input.values[:, :jumlah_fitur_scaler])
+                for i in range(jumlah_fitur_scaler):
+                    df_scaled.iloc[0, i] = scaled_values[0, i]
+                status_scaler = f"Partial Scaling Aktif untuk {jumlah_fitur_scaler} Fitur Pertama."
     except Exception as e:
-        try:
-            # Jika gagal, coba transform langsung seluruh dataframe
-            df_scaled = pd.DataFrame(scaler.transform(df_input), columns=fitur_desain)
-        except Exception as e2:
-            st.warning("Deteksi otomatis mendeteksi variasi struktur model. Menjalankan mode passthrough.")
+        status_scaler = f"Mode Darurat Aktif. Gagal scaling karena: {e}"
 
-    # --- Eksekusi Otak Machine Learning ---
+    # --- Eksekusi Utama Prediksi Model ---
     prediksi = model.predict(df_scaled)[0]
     probabilitas = model.predict_proba(df_scaled)[0]
     skor_yakin = np.max(probabilitas) * 100
     
     st.markdown("### 📋 Hasil Diagnosis Kecerdasan Buatan (Real-Time)")
+    
+    # Notifikasi sistem pipeline di web
+    st.caption(f"🔧 **Status Pipeline Data:** {status_scaler}")
     
     col_kiri, col_kanan = st.columns([6, 4])
     
@@ -146,11 +173,9 @@ if tombol_analisis:
                     <p style='margin:5px 0 0 0; font-size:18px; font-weight:bold;'>KONDISI JALAN: BERPOTENSI RUSAK / BUTUH MAINTENANCE</p>
                 </div>
             """, unsafe_allow_html=True)
-            
             st.markdown("#### 💡 Dokumen Rekomendasi Teknis (Actionable Insights):")
-            insight_text = f"Analisis model mendeteksi beban operasional kritis pada jalan ini. Diperlukan intervensi pemeliharaan berkala untuk menjaga stabilitas struktural."
+            insight_text = "Analisis model mendeteksi adanya akumulasi beban batas kritis pada jalan ini. Diperlukan inspeksi visual berkala oleh tim teknis lapangan PPKD Jaksel untuk mencegah penyebaran deformasi struktural."
             st.markdown(f"<div class='insight-box'>{insight_text}</div>", unsafe_allow_html=True)
-            
         else:
             st.markdown(f"""
                 <div class="card-aman">
@@ -158,9 +183,8 @@ if tombol_analisis:
                     <p style='margin:5px 0 0 0; font-size:18px; font-weight:bold;'>KONDISI JALAN: AMAN / TIDAK BUTUH PERBAIKAN STRUKTURAL</p>
                 </div>
             """, unsafe_allow_html=True)
-            
             st.markdown("#### 💡 Dokumen Rekomendasi Teknis (Actionable Insights):")
-            insight_text = "Struktur geometris jalan diproyeksikan berada dalam performa pelayanan terbaiknya (Ambang batas aman fungsional)."
+            insight_text = "Struktur geometris dan fungsional jalan diproyeksikan berada dalam performa pelayanan terbaiknya. Nilai parameter operasional masih berada di bawah ambang batas kritis kerusakan."
             st.markdown(f"<div class='insight-box'>{insight_text}</div>", unsafe_allow_html=True)
 
     with col_kanan:
@@ -183,19 +207,12 @@ if tombol_analisis:
         fig.update_layout(margin=dict(l=20, r=20, t=10, b=10), height=220, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
         st.plotly_chart(fig, use_container_width=True)
 
-    # PANEL INVESTIGASI UTAMA
+    # AUDIT PANEL
     with st.expander("🔍 PUSAT AUDIT INTERNALS MODEL (Cek Kebenaran Data)"):
-        st.markdown("**1. Data Hasil Tangkapan UI yang Dikirim ke Model (Raw Match):**")
+        st.markdown("**1. Data Sebelum Masuk Scaler (Nilai UI Asli):**")
         st.dataframe(df_input)
-        
-        st.markdown("**2. Data Setelah Melewati Scaler (Scaled Data):**")
+        st.markdown("**2. Data Setelah Melewati Filter Scaler Pintar (Scaled Data):**")
         st.dataframe(df_scaled)
-        
-        if hasattr(model, 'coef_'):
-            st.markdown("**3. Koefisien Bobot Fitur Model (`model.coef_`):**")
-            st.write(model.coef_[0])
-            st.markdown("**4. Nilai Intercept Model (`model.intercept_`):**")
-            st.write(model.intercept_)
 
 else:
     st.info("💡 **Petunjuk Penggunaan:** Silakan sesuaikan parameter operasional pada **Panel Sidebar Sebelah Kiri**, lalu klik tombol **Analisis Potensi Kerusakan Jalan** untuk memulai kalkulasi.")
